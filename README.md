@@ -1,7 +1,7 @@
 # IDAGIO-Downloader-Rust-ver-
 IDAGIO downloader written in Rust.
 ![](https://i.imgur.com/mHBAub0.png)
-[Pre-compiled binaries](https://github.com/Sorrow446/IDAGIO-Downloader-Rust-ver-/releases)
+[Pre-compiled binaries](https://github.com/Sorrow446/IDAGIO-Downloader-Rust-ver/releases/)
 
 # Setup
 Input credentials into config file.
