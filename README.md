@@ -52,3 +52,8 @@ Options:
   -u, --urls <URLS>...
   -h, --help                 Print help
 ```
+
+# Disclaimer
+- I will not be responsible for how you use IDAGIO Downloader.    
+- IDAGIO brand and name is the registered trademark of its respective owner.    
+- IDAGIO Downloader has no partnership, sponsorship or endorsement with IDAGIO.
