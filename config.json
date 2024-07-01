@@ -1,0 +1,9 @@
+{
+	"email": "",
+	"password": "",
+	"format": 3,
+	"out_path": "",
+	"keep_covers": true,
+	"write_covers": true,
+	"use_ffmpeg_env_var": false
+}

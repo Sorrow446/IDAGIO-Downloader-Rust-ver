@@ -1,0 +1,23 @@
+[package]
+name = "idagio"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aes = "0.8.4"
+clap = { version = "4.5.4", features = ["derive"] }
+ctr = "0.9.2"
+hex = "0.4.3"
+id3 = "1.13.1"
+indicatif = "0.17.8"
+metaflac = "0.2.7"
+mp4ameta = "0.11.0"
+regex = "1.10.4"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+scraper = "0.19.0"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+sha2 = "0.10.8"
+
+[profile.release]
+strip = true
