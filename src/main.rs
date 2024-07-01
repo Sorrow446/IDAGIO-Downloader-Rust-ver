@@ -500,8 +500,8 @@ fn process_video(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
 
     master.audio.sort_by_key(|a| -(a.avg_bitrate as i32));
 
-    // master.video.sort_by_key(|v| -(v.height as i16));
-    master.video.sort_by_key(|v| v.height);
+    master.video.sort_by_key(|v| -(v.height as i16));
+    // master.video.sort_by_key(|v| v.height);
 
     let video = &master.video[0];
 
