@@ -3,7 +3,7 @@ IDAGIO downloader written in Rust.
 ![](https://i.imgur.com/mHBAub0.png)
 [Pre-compiled binaries](https://github.com/Sorrow446/IDAGIO-Downloader-Rust-ver/releases/)
 
-# Setup
+## Setup
 Input credentials into config file.
 Configure any other options if needed.
 |Option|Info|
@@ -16,15 +16,15 @@ Configure any other options if needed.
 |write_covers|Write covers to tracks.
 |use_ffmpeg_env_var|true = call FFmpeg from environment variable, false = call from script dir.
 
-**FFmpeg is needed for TS -> MP4 losslessly for concerts, see below.**
+**FFmpeg is needed for muxing MP4 losslessly for concerts, see below.**
 
-# FFmpeg Setup
+## FFmpeg Setup
 [Windows (gpl)](https://github.com/BtbN/FFmpeg-Builds/releases)    
 Linux: `sudo apt install ffmpeg`    
 Termux `pkg install ffmpeg`    
 Place in IDAGIO DL's script/binary directory if using FFmpeg binary.
 
-If you don't have root in Linux, you can have Nugs DL look for the binary in the same dir by setting the `use_ffmpeg_env_var` option to false.
+If you don't have root in Linux, you can have IDAGIO DL look for the binary in the same dir by setting the `use_ffmpeg_env_var` option to false.
 
 ## Supported Media
 |Type|URL example|
@@ -32,7 +32,7 @@ If you don't have root in Linux, you can have Nugs DL look for the binary in the
 |Album|`https://app.idagio.com/albums/1628a93d-cfdc-4850-bda1-3b14209f729b`
 |Concert|`https://app.idagio.com/live/event/francesco-cavalli-ercole-amante` Best format is automatically chosen for now.
 
-# Usage
+## Usage
 Args take priority over the config file.
 
 Download two albums:   
@@ -53,7 +53,7 @@ Options:
   -h, --help                 Print help
 ```
 
-# Disclaimer
+## Disclaimer
 - I will not be responsible for how you use IDAGIO Downloader.    
 - IDAGIO brand and name is the registered trademark of its respective owner.    
 - IDAGIO Downloader has no partnership, sponsorship or endorsement with IDAGIO.
