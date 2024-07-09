@@ -31,6 +31,7 @@ If you don't have root in Linux, you can have IDAGIO DL look for the binary in t
 | --- | --- |
 |Album|`https://app.idagio.com/albums/1628a93d-cfdc-4850-bda1-3b14209f729b`
 |Concert|`https://app.idagio.com/live/event/francesco-cavalli-ercole-amante` Best format is automatically chosen for now.
+|Playlist|`https://app.idagio.com/playlists/carolyn-sampson-my-elly-ameling-top-five`
 
 ## Usage
 Args take priority over the config file.
