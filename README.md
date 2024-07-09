@@ -15,6 +15,7 @@ Configure any other options if needed.
 |keep_covers|Keep covers in album folder.
 |write_covers|Write covers to tracks.
 |use_ffmpeg_env_var|true = call FFmpeg from environment variable, false = call from script dir.
+|downloads_booklets|Download booklets when available.
 
 **FFmpeg is needed for muxing MP4 losslessly for concerts, see below.**
 
@@ -46,6 +47,7 @@ Download a single concert and from a text file containing links:
 Usage: idagio_dl.exe [OPTIONS] --urls <URLS>...
 
 Options:
+  -b, --download-booklets    Download booklets when available.
   -f, --format <FORMAT>      1 = AAC 160 / 192, 2 = MP3 320 / AAC 320, 3 = 16/44 FLAC.
   -o, --out-path <OUT_PATH>  Output path.
   -k, --keep-covers          Keep covers in album folder.
