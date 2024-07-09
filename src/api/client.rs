@@ -78,6 +78,18 @@ impl IDAGIOClient {
 		Ok(album_meta.result)
 	}
 
+	pub fn get_playlist_meta(&mut self, plist_slug: &str) -> Result<PlaylistMetaResult, ReqwestErr> {
+		let url = format!("{}v2.0/playlists/{}", BASE_URL, plist_slug);
+		let resp = self.c.get(url)
+			.header(AUTHORIZATION, format!("Bearer  {}", self.user_info.access_token))
+			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+			.send()?;
+		resp.error_for_status_ref()?;
+		let plist_meta: PlaylistMeta = resp.json()?;
+		Ok(plist_meta.result)
+	}
+
+
 	fn serialise_track_ids(&mut self, ids: Vec<String>) -> Result<String, SerdeErr> {
 		let ids_struct = IDs { ids };
 		let serialised = serde_json::to_string(&ids_struct)?;
