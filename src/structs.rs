@@ -5,6 +5,10 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "IDAGIO Downloader")]
 pub struct Args {
+
+    #[clap(short='b', long, help="Download booklets when available.")]
+    pub download_booklets: bool,
+
     #[clap(short, long, help="1 = AAC 160 / 192, 2 = MP3 320 / AAC 320, 3 = 16/44 FLAC.")]
     pub format: Option<u8>,
 
@@ -23,6 +27,7 @@ pub struct Args {
 
 #[derive(Deserialize)]
 pub struct Config {
+    pub download_booklets: bool,
     pub email: String,
     #[serde(skip_deserializing)]
     pub ffmpeg_path: PathBuf,

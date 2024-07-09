@@ -3,7 +3,7 @@ mod structs;
 mod utils;
 
 use api::client::IDAGIOClient;
-use api::structs::{AlbumMetaResult, Author, Track};
+use api::structs::{AlbumMetaResult, AudioTrack, Author, PlaylistMetaResult, Track};
 use clap::Parser;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use hex;
@@ -13,7 +13,7 @@ use serde_json;
 use sha2::{Sha256, Digest};
 use std::error::Error;
 use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read, Write, Error as IoError, Cursor};
+use std::io::{self, BufReader, BufWriter, Read, Write, Error as IoError};
 use structs::{Args, Config, ParsedAlbumMeta};
 use std::path::PathBuf;
 use metaflac::{Tag as FlacTag, Error as FlacError};
@@ -23,17 +23,16 @@ use metaflac::block::PictureType::CoverFront as FlacCoverFront;
 use id3::{Error as Id3Error, Tag as Mp3Tag, TagLike, Version};
 use id3::frame::{Picture as Mp3Image, PictureType as Mp3ImageType};
 use mp4ameta::{Tag as Mp4Tag, Data as Mp4Data, Fourcc, Error as Mp4Error};
-use crate::api::structs::AudioTrack;
 use std::process::{Command, Output, Stdio};
-use crate::utils::get_exe_path;
 
 type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
 const BUF_SIZE: usize = 1024 * 1024;
 
-const REGEX_STRINGS: [&str; 2] = [
+const REGEX_STRINGS: [&str; 3] = [
     r#"https://app.idagio.com/albums/([a-zA-Z\d-]+)"#,
     r#"https://app.idagio.com/live/event/([a-zA-Z\d-]+)"#,
+    r#"https://app.idagio.com/playlists/([a-zA-Z\d-]+)"#
  ];
 
 const SAN_REGEX_STRING: &str = r#"[\/:*?"><|]"#;
@@ -71,7 +70,7 @@ fn resolve_format(fmt: u8) -> Option<u8> {
 }
 
 fn parse_config() -> Result<Config, Box<dyn Error>> {
-    let exe_path = get_exe_path()?;
+    let exe_path = utils::get_exe_path()?;
 
     let mut config = read_config(&exe_path)?;
     let args = Args::parse();
@@ -85,10 +84,14 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
         config.write_covers = args.write_covers;
     }
 
+    if args.download_booklets {
+        config.download_booklets = args.download_booklets;
+    }
+
     config.format = args.format.unwrap_or(config.format);
     config.out_path = args.out_path.unwrap_or(config.out_path);
-    config.out_path.push("IDAGIO downloads");
 
+    config.out_path.push("IDAGIO downloads");
 
     config.format = resolve_format(config.format)
         .ok_or("format must be between 1 and 3")?;
@@ -198,7 +201,7 @@ fn download(resp: &mut ReqwestResp, out_path: &PathBuf) -> Result<(), Box<dyn Er
     Ok(())
 }
 fn download_track(c: &mut IDAGIOClient, url: &str, incomp_path: &PathBuf, out_path: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let mut resp = c.get_file_resp(url)?;
+    let mut resp = c.get_file_resp(url, true)?;
     let key_and_iv_str = resp.headers().get("x-x")
         .map_or_else(
             || Ok("".to_string()),
@@ -268,7 +271,9 @@ fn write_mp3_tags(track_path: &PathBuf, meta: &ParsedAlbumMeta) -> Result<(), Id
     tag.set_title(&meta.title);
     tag.set_track(meta.track_num as u32);
     tag.set_total_tracks(meta.track_total as u32);
-    tag.set_year(meta.year as i32);
+    if meta.year > 0 {
+        tag.set_year(meta.year as i32);
+    }
 
     if !meta.cover_data.is_empty() {
         let pic = Mp3Image {
@@ -292,7 +297,9 @@ fn write_mp4_tags(track_path: &PathBuf, meta: &ParsedAlbumMeta) -> Result<(), Mp
     tag.set_artist(&meta.artist);
     tag.set_title(&meta.title);
     tag.set_track(meta.track_num, meta.track_total);
-    tag.set_year(meta.year.to_string());
+    if meta.year > 0 {
+        tag.set_year(meta.year.to_string());
+    }
 
     let covr = Fourcc(*b"covr");
     if !meta.cover_data.is_empty() {
@@ -347,15 +354,22 @@ fn process_track(c: &mut IDAGIOClient, album_path: &PathBuf, meta: &ParsedAlbumM
     println!("Track {} of {}: {} - {}", meta.track_num, meta.track_total, meta.title, quality.specs);
 
     let san_track_fname = format!("{:02}. {}", meta.track_num, sanitise(&meta.title)?);
-    let track_path_no_ext = album_path.join(san_track_fname);
-    let track_path = utils::append_to_path(&track_path_no_ext, quality.extension)?;
-    let track_path_incomp = utils::append_to_path(&track_path_no_ext, ".incomplete")?;
+    let mut track_path_no_ext = album_path.join(san_track_fname);
+    let mut track_path = utils::append_to_path(&track_path_no_ext, quality.extension);
+
+    if cfg!(target_os = "windows") && track_path.to_string_lossy().len() > 255 {
+        let padded_track = format!("{:02}", meta.track_num);
+        track_path_no_ext = album_path.join(padded_track);
+        track_path = utils::append_to_path(&track_path_no_ext, quality.extension);
+        println!("Track exceeds max path length; will be renamed like <track_num>.<ext> instead.");
+    }
 
     if utils::file_exists(&track_path)? {
         println!("Track already exists locally.");
         return Ok(());
     }
 
+    let track_path_incomp = utils::append_to_path(&track_path_no_ext, ".incomplete");
     download_track(c, url, &track_path_incomp, &track_path)?;
     write_tags(&track_path, quality.format, meta)?;
 
@@ -374,6 +388,21 @@ fn parse_album_meta(meta: &AlbumMetaResult, track_total: u16) -> ParsedAlbumMeta
         track_total,
         upc: meta.upc.clone(),
         year: meta.copyright_year,
+    }
+}
+
+fn parse_plist_meta(meta: &PlaylistMetaResult, track_total: u16) -> ParsedAlbumMeta {
+    ParsedAlbumMeta {
+        album_title: meta.title.clone(),
+        album_artist: meta.curator.name.clone(),
+        artist: String::new(),
+        copyright: String::new(),
+        cover_data: Vec::new(),
+        title: String::new(),
+        track_num: 0,
+        track_total,
+        upc: String::new(),
+        year: 0,
     }
 }
 
@@ -400,7 +429,7 @@ fn parse_track_meta(meta: &mut ParsedAlbumMeta, track_meta: &Track, track_num: u
 }
 
 fn get_cover_data(c: &mut IDAGIOClient, url: &str) -> Result<Vec<u8>, Box<ReqwestErr>> {
-    let resp = c.get_cover_resp(url)?;
+    let resp = c.get_file_resp(url, false)?;
     let body_bytes = resp.bytes()?;
     let body_vec: Vec<u8> = body_bytes.into_iter().collect();
     Ok(body_vec)
@@ -409,15 +438,22 @@ fn get_cover_data(c: &mut IDAGIOClient, url: &str) -> Result<Vec<u8>, Box<Reqwes
 fn write_cover(cover_data: &[u8], album_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     let cover_path = album_path.join("folder.jpg");
     let mut f = File::create(cover_path)?;
-    let mut cursor = Cursor::new(cover_data);
-    io::copy(&mut cursor, &mut f)?;
+    f.write_all(cover_data)?;
+    Ok(())
+}
+
+fn download_booklet(c: &mut IDAGIOClient, url: &str, album_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let booklet_path = album_path.join("booklet.pdf");
+    let mut resp = c.get_file_resp(url, false)?;
+    let mut f = File::create(booklet_path)?;
+    io::copy(&mut resp, &mut f)?;
     Ok(())
 }
 fn process_album(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
-    let mut meta = c.get_album_meta(slug)?;
+    let meta = c.get_album_meta(slug)?;
     let track_total = meta.tracks.len() as u16;
     let mut parsed_meta = parse_album_meta(&meta, track_total);
-    meta.tracks.sort_by_key(|t| t.position);
+    // meta.tracks.sort_by_key(|t| t.position);
 
     let album_folder = format!("{} - {}", parsed_meta.album_artist, parsed_meta.album_title);
     println!("{}", album_folder);
@@ -445,6 +481,13 @@ fn process_album(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
             process_track(c, &album_path, &parsed_meta, &res.url)?;
         } else {
             println!("The API didn't return any stream metadata for this track.")
+        }
+    }
+
+    if config.download_booklets {
+        if let Some(booklet_url) = meta.booklet_url {
+            println!("Booklet available; downloading...");
+            download_booklet(c, &booklet_url, &album_path)?;
         }
     }
 
@@ -501,7 +544,6 @@ fn process_video(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
     master.audio.sort_by_key(|a| -(a.avg_bitrate as i32));
 
     master.video.sort_by_key(|v| -(v.height as i16));
-    // master.video.sort_by_key(|v| v.height);
 
     let video = &master.video[0];
 
@@ -522,11 +564,11 @@ fn process_video(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
     let audio_path = config.out_path.join("a.mp4");
 
     println!("Video: ~{} Kbps | {} FPS | {}p ({}x{2})", video.avg_bitrate/1000, video.framerate, video.height, video.width);
-    let mut video_resp = c.get_file_resp(&video_url)?;
+    let mut video_resp = c.get_file_resp(&video_url, true)?;
     download(&mut video_resp, &video_path)?;
 
     println!("Audio: AAC ~{} Kbps", audio.avg_bitrate/1000);
-    let mut audio_resp = c.get_file_resp(&audio_url)?;
+    let mut audio_resp = c.get_file_resp(&audio_url, true)?;
     download(&mut audio_resp, &audio_path)?;
 
     println!("Muxing...");
@@ -534,6 +576,35 @@ fn process_video(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
     fs::remove_file(video_path)?;
     fs::remove_file(audio_path)?;
 
+    Ok(())
+}
+
+fn process_plist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
+    let meta = c.get_playlist_meta(slug)?;
+    let track_total = meta.tracks.len() as u16;
+    let mut parsed_meta = parse_plist_meta(&meta, track_total);
+    // meta.tracks.sort_by_key(|t| t.position);
+
+    let plist_folder = format!("{} - {}", meta.curator.name, meta.title);
+    println!("{}", plist_folder);
+
+    let san_plist_folder = sanitise(&plist_folder)?;
+    let plist_path = config.out_path.join(san_plist_folder);
+    fs::create_dir_all(&plist_path)?;
+
+    // The album meta endpoint returns the track IDs as strings, but the plist endpoint returns them as ints instead.
+    let ids: Vec<String> = meta.track_ids.iter().map(|id| id.to_string()).collect();
+    let stream_meta = c.get_stream_meta(ids, config.format)?;
+
+    for (mut idx, track) in meta.tracks.iter().enumerate() {
+        idx += 1;
+        if let Some(res) = stream_meta.iter().find(|res| res.id == track.id) {
+            parse_track_meta(&mut parsed_meta, track, idx as u16);
+            process_track(c, &plist_path, &parsed_meta, &res.url)?;
+        } else {
+            println!("The API didn't return any stream metadata for this track.")
+        }
+    }
     Ok(())
 }
 
@@ -559,21 +630,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let regexes = compile_regexes()?;
+    let url_total = config.urls.len();
 
-    for url in &config.urls {
+    for (mut url_num, url) in config.urls.iter().enumerate() {
+        url_num += 1;
+        println!("URL {} of {}:", url_num, url_total);
         let (slug, media_type) = check_url(&url, &regexes)?;
         if slug.is_empty() {
             println!("Invalid URL: {}", url);
             continue;
         }
-        match media_type {
-            0 => if let Err (e) = process_album(&mut c, &slug, &config) {
-                println!("Album failed.\n{}", e);
-            },
-            1 => if let Err (e) = process_video(&mut c, &slug, &config) {
-                println!("Video failed.\n{}", e);
-            },
-            _ => {},
+
+        let res = match media_type {
+            0 => process_album(&mut c, &slug, &config),
+            1 => process_video(&mut c, &slug, &config),
+            2 => process_plist(&mut c, &slug, &config),
+            _ => Ok(()),
+        };
+
+        if let Err(e) = res {
+            println!("URL failed.\n{}", e);
         }
     }
 

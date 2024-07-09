@@ -79,10 +79,10 @@ pub fn file_exists(file_path: &PathBuf) -> Result<bool, IoError> {
     }
 }
 
-pub fn append_to_path(path: &PathBuf, to_append: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let path_str = path.to_str().ok_or("failed to convert path to string")?;
+pub fn append_to_path(path: &PathBuf, to_append: &str) -> PathBuf {
+    let path_str = path.to_string_lossy();
     let new_path_str = format!("{}{}", path_str, to_append);
-    Ok(PathBuf::from(new_path_str))
+    PathBuf::from(new_path_str)
 }
 
 pub fn set_path_ext(path: &PathBuf, ext: &str) -> PathBuf {

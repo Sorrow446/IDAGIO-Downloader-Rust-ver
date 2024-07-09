@@ -78,6 +78,18 @@ impl IDAGIOClient {
 		Ok(album_meta.result)
 	}
 
+	pub fn get_playlist_meta(&mut self, plist_slug: &str) -> Result<PlaylistMetaResult, ReqwestErr> {
+		let url = format!("{}v2.0/playlists/{}", BASE_URL, plist_slug);
+		let resp = self.c.get(url)
+			.header(AUTHORIZATION, format!("Bearer  {}", self.user_info.access_token))
+			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+			.send()?;
+		resp.error_for_status_ref()?;
+		let plist_meta: PlaylistMeta = resp.json()?;
+		Ok(plist_meta.result)
+	}
+
+
 	fn serialise_track_ids(&mut self, ids: Vec<String>) -> Result<String, SerdeErr> {
 		let ids_struct = IDs { ids };
 		let serialised = serde_json::to_string(&ids_struct)?;
@@ -108,22 +120,16 @@ impl IDAGIOClient {
 		Ok(stream_meta.results)
 	}
 
-	pub fn get_file_resp(&mut self, url: &str) -> Result<ReqwestResp, ReqwestErr> {
-		let resp = self.c.get(url)
-			.header(RANGE, "bytes=0-")
-			.send()?;
+	pub fn get_file_resp(&mut self, url: &str, with_range: bool) -> Result<ReqwestResp, ReqwestErr> {
+		let mut req = self.c.get(url);
+		if with_range {
+			req = req.header(RANGE, "bytes=0-")
+		}
+		let resp = req.send()?;
 		resp.error_for_status_ref()?;
 		Ok(resp)
 	}
 
-	pub fn get_cover_resp(&mut self, url: &str) -> Result<ReqwestResp, ReqwestErr> {
-		let resp = self.c.get(url)
-			.send()?;
-		resp.error_for_status_ref()?;
-		Ok(resp)
-	}
-
-	// https://api.idagio.com/livestream-event.v2/claudio-abbado-and-the-lucerne-festival-orchestra-wagner-and-mahler
 	pub fn get_video_meta(&mut self, slug: &str) -> Result<VideoMetaResult, ReqwestErr> {
 		let url = format!("{}livestream-event.v2/{}", BASE_URL, slug);
 		let resp = self.c.get(url)

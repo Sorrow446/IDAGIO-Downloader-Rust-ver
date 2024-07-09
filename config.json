@@ -5,5 +5,6 @@
 	"out_path": "",
 	"keep_covers": true,
 	"write_covers": true,
-	"use_ffmpeg_env_var": false
+	"use_ffmpeg_env_var": false,
+	"download_booklets": true
 }

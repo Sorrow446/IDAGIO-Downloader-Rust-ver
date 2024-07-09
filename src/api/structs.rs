@@ -54,7 +54,7 @@ pub struct Piece {
 pub struct Track {
     pub id: i64,
     pub piece: Piece,
-    pub position: i64,
+    // pub position: i64,
 }
 
 #[derive(Deserialize)]
@@ -65,6 +65,7 @@ pub struct Participant {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumMetaResult {
+    pub booklet_url: Option<String>,
     pub copyright: String,
     pub copyright_year: u16,
     pub image_url: String,
@@ -176,4 +177,23 @@ pub struct AudioTrack {
 pub struct VideoMaster {
     pub audio: Vec<AudioTrack>,
     pub video: Vec<VideoTrack>,
+}
+
+#[derive(Deserialize)]
+pub struct Curator {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistMetaResult {
+    pub title: String,
+    pub curator: Curator,
+    pub track_ids: Vec<u64>,
+    pub tracks: Vec<Track>,
+}
+
+#[derive(Deserialize)]
+pub struct PlaylistMeta {
+    pub result: PlaylistMetaResult,
 }
