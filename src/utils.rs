@@ -4,7 +4,7 @@ use std::io::{self, BufRead, BufReader, Error as IoError};
 use std::path::PathBuf;
 use std::env;
 
-pub fn get_exe_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn get_exe_path() -> Result<PathBuf, Box<dyn Error>> {
     let exe_path = env::current_exe()?;
     let parent_dir = exe_path.parent()
         .ok_or("failed to get path of executable")?;

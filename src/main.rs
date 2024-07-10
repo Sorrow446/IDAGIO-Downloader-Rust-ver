@@ -4,35 +4,38 @@ mod utils;
 
 use api::client::IDAGIOClient;
 use api::structs::{AlbumMetaResult, AudioTrack, Author, PlaylistMetaResult, Track};
+use structs::{Args, Config, ParsedAlbumMeta};
+
+use std::error::Error;
+use std::fs::{self, File};
+use std::io::{self, BufReader, BufWriter, Read, Write, Error as IoError};
+use std::path::PathBuf;
+use std::process::{Command, Output, Stdio};
+
 use clap::Parser;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 use hex;
 use indicatif::{ProgressBar, ProgressStyle};
+use metaflac::{Tag as FlacTag, Error as FlacError};
+use metaflac::block::PictureType::CoverFront as FlacCoverFront;
 use regex::{Regex, Error as RegexError};
+use reqwest::blocking::Response as ReqwestResp;
+use reqwest::Error as ReqwestErr;
 use serde_json;
 use sha2::{Sha256, Digest};
-use std::error::Error;
-use std::fs::{self, File};
-use std::io::{self, BufReader, BufWriter, Read, Write, Error as IoError};
-use structs::{Args, Config, ParsedAlbumMeta};
-use std::path::PathBuf;
-use metaflac::{Tag as FlacTag, Error as FlacError};
-use reqwest::Error as ReqwestErr;
-use reqwest::blocking::Response as ReqwestResp;
-use metaflac::block::PictureType::CoverFront as FlacCoverFront;
 use id3::{Error as Id3Error, Tag as Mp3Tag, TagLike, Version};
 use id3::frame::{Picture as Mp3Image, PictureType as Mp3ImageType};
 use mp4ameta::{Tag as Mp4Tag, Data as Mp4Data, Fourcc, Error as Mp4Error};
-use std::process::{Command, Output, Stdio};
 
 type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
 const BUF_SIZE: usize = 1024 * 1024;
 
-const REGEX_STRINGS: [&str; 3] = [
-    r#"https://app.idagio.com/albums/([a-zA-Z\d-]+)"#,
-    r#"https://app.idagio.com/live/event/([a-zA-Z\d-]+)"#,
-    r#"https://app.idagio.com/playlists/([a-zA-Z\d-]+)"#
+const REGEX_STRINGS: [&str; 4] = [
+    r#"^https://app.idagio.com/albums/([a-zA-Z\d-]+)$"#,
+    r#"^https://app.idagio.com/live/event/([a-zA-Z\d-]+)$"#,
+    r#"^https://app.idagio.com/playlists/([a-zA-Z\d-]+)$"#,
+    r#"^https://app.idagio.com/profiles/([a-zA-Z\d-]+)/(?:about|albums)$"#,
  ];
 
 const SAN_REGEX_STRING: &str = r#"[\/:*?"><|]"#;
@@ -451,6 +454,7 @@ fn download_booklet(c: &mut IDAGIOClient, url: &str, album_path: &PathBuf) -> Re
 }
 fn process_album(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
     let meta = c.get_album_meta(slug)?;
+
     let track_total = meta.tracks.len() as u16;
     let mut parsed_meta = parse_album_meta(&meta, track_total);
     // meta.tracks.sort_by_key(|t| t.position);
@@ -504,7 +508,7 @@ fn get_aac_audio(audio: &[AudioTrack]) -> Option<&AudioTrack> {
     audio.iter().find(|&d|d.codecs == "mp4a.40.2")
 }
 
-fn mux_mp4(ffmpeg_path: &PathBuf, video_path: &PathBuf, audio_path: &PathBuf, out_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+fn mux_mp4(ffmpeg_path: &PathBuf, video_path: &PathBuf, audio_path: &PathBuf, out_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     let output: Output = Command::new(ffmpeg_path)
         .arg("-i")
         .arg(video_path)
@@ -608,6 +612,22 @@ fn process_plist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
     Ok(())
 }
 
+fn process_artist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
+    let meta = c.get_artist_albums_meta(slug)?;
+
+    let album_total = meta.len();
+    for (mut album_num, album_meta) in meta.into_iter().enumerate() {
+        album_num += 1;
+        println!("Album {} of {}:", album_num, album_total);
+        if let Err(e) = process_album(c, &album_meta.slug, config) {
+            println!("Album failed.\n{}", e);
+        }
+    }
+
+    Ok(())
+
+}
+
 fn compile_regexes() -> Result<Vec<Regex>, regex::Error> {
     REGEX_STRINGS.iter()
         .map(|&s| Regex::new(s))
@@ -645,6 +665,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             0 => process_album(&mut c, &slug, &config),
             1 => process_video(&mut c, &slug, &config),
             2 => process_plist(&mut c, &slug, &config),
+            3 => process_artist(&mut c, &slug, &config),
             _ => Ok(()),
         };
 

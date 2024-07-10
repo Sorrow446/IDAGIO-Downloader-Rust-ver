@@ -1,12 +1,14 @@
 use crate::api::structs::*;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT, AUTHORIZATION, RANGE, REFERER};
-use reqwest::Error as ReqwestErr;
-use reqwest::blocking::{Client, Response as ReqwestResp};
+
 use std::collections::HashMap;
-use serde_json::{self, Error as SerdeErr};
 use std::error::Error;
+
+use reqwest::blocking::{Client, Response as ReqwestResp};
+use reqwest::Error as ReqwestErr;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT, AUTHORIZATION, RANGE, REFERER};
 use reqwest::Url;
 use scraper::{Html, Selector};
+use serde_json::{self, Error as SerdeErr};
 
 const BASE_URL: &str = "https://api.idagio.com/";
 const CLIENT_ID: &str = "com.idagio.app.android";
@@ -35,8 +37,8 @@ impl IDAGIOClient {
 		};
 
 		let idagio_client = IDAGIOClient {
-			c: c,
-			user_info: user_info,
+			c,
+			user_info,
 		};
 
 		Ok(idagio_client)
@@ -89,6 +91,64 @@ impl IDAGIOClient {
 		Ok(plist_meta.result)
 	}
 
+	fn get_artist_meta(&mut self, artist_slug: &str) -> Result<ArtistMetaResult, ReqwestErr> {
+		let url = format!("{}artists.v3/{}", BASE_URL, artist_slug);
+		let resp = self.c.get(url)
+			.header(AUTHORIZATION, format!("Bearer  {}", self.user_info.access_token))
+			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+			.send()?;
+		resp.error_for_status_ref()?;
+		let artist_meta: ArtistMeta = resp.json()?;
+		Ok(artist_meta.result)
+	}
+
+	fn resolve_artist_id(&mut self, artist_slug: &str) -> Result<u64, ReqwestErr> {
+		let artist_meta = self.get_artist_meta(artist_slug)?;
+		Ok(artist_meta.id)
+	}
+
+	pub fn get_artist_albums_meta(&mut self, artist_slug: &str) -> Result<Vec<ArtistAlbumsMetaResult>, Box<dyn Error>> {
+		let artist_id = self.resolve_artist_id(artist_slug)?;
+		let artist_id_string = artist_id.to_string();
+
+		let mut all_meta: Vec<ArtistAlbumsMetaResult> = Vec::new();
+		let url_no_params = format!("{}v2.0/metadata/albums/filter", BASE_URL);
+
+		// Lifetime crap.
+		let mut cursor_opt: Option<String> = None;
+
+		let mut params: HashMap<&str, String> = HashMap::new();
+		params.insert("artist", artist_id_string);
+		params.insert("sort", "relevance".to_string());
+
+		loop {
+
+			if let Some(cursor) = cursor_opt.as_ref() {
+				params.insert("cursor", cursor.clone());
+			}
+
+			let url = Url::parse_with_params(&url_no_params, &params)?;
+
+			let resp = self.c.get(url)
+				.header(AUTHORIZATION, format!("Bearer {}", self.user_info.access_token))
+				.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+				.send()?;
+			resp.error_for_status_ref()?;
+
+			let albums_meta: ArtistAlbumsMeta = resp.json()?;
+			all_meta.extend(albums_meta.results);
+
+			if let Some(c) = albums_meta.meta.cursor.next.clone() {
+				cursor_opt = Some(c);
+			} else {
+				break;
+			}
+
+			println!("Artist has more than 100 albums. Fetching the remaining metadata...")
+		}
+
+		Ok(all_meta)
+	}
 
 	fn serialise_track_ids(&mut self, ids: Vec<String>) -> Result<String, SerdeErr> {
 		let ids_struct = IDs { ids };

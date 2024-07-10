@@ -197,3 +197,33 @@ pub struct PlaylistMetaResult {
 pub struct PlaylistMeta {
     pub result: PlaylistMetaResult,
 }
+
+#[derive(Deserialize)]
+pub struct Cursor {
+    pub next: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct Meta {
+    pub cursor: Cursor,
+}
+
+#[derive(Deserialize)]
+pub struct ArtistMetaResult {
+    pub id: u64,
+}
+
+#[derive(Deserialize)]
+pub struct ArtistMeta {
+    pub result: ArtistMetaResult,
+}
+
+#[derive(Deserialize)]
+pub struct ArtistAlbumsMetaResult {
+    pub slug: String,
+}
+#[derive(Deserialize)]
+pub struct ArtistAlbumsMeta {
+    pub meta: Meta,
+    pub results: Vec<ArtistAlbumsMetaResult>,
+}
