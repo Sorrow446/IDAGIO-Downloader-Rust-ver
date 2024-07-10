@@ -452,6 +452,7 @@ fn download_booklet(c: &mut IDAGIOClient, url: &str, album_path: &PathBuf) -> Re
     io::copy(&mut resp, &mut f)?;
     Ok(())
 }
+
 fn process_album(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
     let meta = c.get_album_meta(slug)?;
 
@@ -616,7 +617,7 @@ fn process_artist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(
     let meta = c.get_artist_albums_meta(slug)?;
 
     let album_total = meta.len();
-    for (mut album_num, album_meta) in meta.into_iter().enumerate() {
+    for (mut album_num, album_meta) in meta.iter().enumerate() {
         album_num += 1;
         println!("Album {} of {}:", album_num, album_total);
         if let Err(e) = process_album(c, &album_meta.slug, config) {
