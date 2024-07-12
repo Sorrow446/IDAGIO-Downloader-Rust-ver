@@ -76,8 +76,8 @@ impl IDAGIOClient {
 			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
 			.send()?;
 		resp.error_for_status_ref()?;
-		let album_meta: AlbumMeta = resp.json()?;
-		Ok(album_meta.result)
+		let meta: AlbumMeta = resp.json()?;
+		Ok(meta.result)
 	}
 
 	pub fn get_playlist_meta(&mut self, plist_slug: &str) -> Result<PlaylistMetaResult, ReqwestErr> {
@@ -87,8 +87,8 @@ impl IDAGIOClient {
 			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
 			.send()?;
 		resp.error_for_status_ref()?;
-		let plist_meta: PlaylistMeta = resp.json()?;
-		Ok(plist_meta.result)
+		let meta: PlaylistMeta = resp.json()?;
+		Ok(meta.result)
 	}
 
 	fn get_artist_meta(&mut self, artist_slug: &str) -> Result<ArtistMetaResult, ReqwestErr> {
@@ -98,8 +98,8 @@ impl IDAGIOClient {
 			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
 			.send()?;
 		resp.error_for_status_ref()?;
-		let artist_meta: ArtistMeta = resp.json()?;
-		Ok(artist_meta.result)
+		let meta: ArtistMeta = resp.json()?;
+		Ok(meta.result)
 	}
 
 	fn resolve_artist_id(&mut self, artist_slug: &str) -> Result<u64, ReqwestErr> {
@@ -135,10 +135,10 @@ impl IDAGIOClient {
 				.send()?;
 			resp.error_for_status_ref()?;
 
-			let albums_meta: ArtistAlbumsMeta = resp.json()?;
-			all_meta.extend(albums_meta.results);
+			let meta: ArtistAlbumsMeta = resp.json()?;
+			all_meta.extend(meta.results);
 
-			if let Some(c) = albums_meta.meta.cursor.next.clone() {
+			if let Some(c) = meta.meta.cursor.next.clone() {
 				cursor_opt = Some(c);
 			} else {
 				break;
@@ -148,6 +148,28 @@ impl IDAGIOClient {
 		}
 
 		Ok(all_meta)
+	}
+
+	// pub fn get_personal_plists_meta(&mut self, id: &str) -> Result<PersonalPlaylistMetaResult, Box<dyn Error>> {
+	// 	let url = format!("{}v1.0/personal-playlists/{}", BASE_URL, id);
+	// 	let resp = self.c.get(url)
+	// 		.header(AUTHORIZATION, format!("Bearer  {}", self.user_info.access_token))
+	// 		.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+	// 		.send()?;
+	// 	resp.error_for_status_ref()?;
+	// 	let meta: PersonalPlaylistsMeta = resp.json()?;
+	// 	Ok(meta.result)
+	// }
+
+	pub fn get_personal_plists_meta(&mut self, id: &str) -> Result<PersonalPlaylistMetaResult, Box<dyn Error>> {
+		let url = format!("{}v1.0/personal-playlists/{}", BASE_URL, id);
+		let resp = self.c.get(url)
+			.header(AUTHORIZATION, format!("Bearer  {}", self.user_info.access_token))
+			.header(CONTENT_TYPE, "application/json; charset=UTF-8")
+			.send()?;
+		resp.error_for_status_ref()?;
+		let meta: PersonalPlaylistsMeta = resp.json()?;
+		Ok(meta.result)
 	}
 
 	fn serialise_track_ids(&mut self, ids: Vec<String>) -> Result<String, SerdeErr> {

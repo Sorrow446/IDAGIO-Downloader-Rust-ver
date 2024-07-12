@@ -1,4 +1,6 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{self, Visitor};
+use std::fmt;
 
 #[derive(Deserialize)]
 pub struct Gch {
@@ -41,7 +43,6 @@ pub struct Work {
 #[derive(Deserialize)]
 pub struct Workpart {
     pub work: Work,
-
 }
 
 #[derive(Deserialize)]
@@ -50,9 +51,48 @@ pub struct Piece {
     pub workpart: Workpart,
 }
 
+fn deserialize_id_as_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+    where
+        D: Deserializer<'de>,
+{
+    struct StringOrIntVisitor;
+
+    impl<'de> Visitor<'de> for StringOrIntVisitor {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or an integer")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+        {
+            Ok(value.to_string())
+        }
+    }
+
+    deserializer.deserialize_any(StringOrIntVisitor)
+}
+
 #[derive(Deserialize)]
 pub struct Track {
-    pub id: i64,
+    #[serde(deserialize_with = "deserialize_id_as_string")]
+    pub id: String,
     pub piece: Piece,
     // pub position: i64,
 }
@@ -102,7 +142,8 @@ pub struct StreamMeta {
 
 #[derive(Deserialize)]
 pub struct StreamMetaResult {
-    pub id: i64,
+    #[serde(deserialize_with = "deserialize_id_as_string")]
+    pub id: String,
     pub url: String,
 }
 
@@ -226,4 +267,17 @@ pub struct ArtistAlbumsMetaResult {
 pub struct ArtistAlbumsMeta {
     pub meta: Meta,
     pub results: Vec<ArtistAlbumsMetaResult>,
+}
+
+#[derive(Deserialize)]
+pub struct PersonalPlaylistMetaResult {
+    pub id: String,
+    pub user_id: String,
+    pub title: String,
+    pub tracks: Vec<Track>,
+}
+
+#[derive(Deserialize)]
+pub struct PersonalPlaylistsMeta {
+    pub result: PersonalPlaylistMetaResult,
 }

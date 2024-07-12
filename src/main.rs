@@ -26,16 +26,18 @@ use sha2::{Sha256, Digest};
 use id3::{Error as Id3Error, Tag as Mp3Tag, TagLike, Version};
 use id3::frame::{Picture as Mp3Image, PictureType as Mp3ImageType};
 use mp4ameta::{Tag as Mp4Tag, Data as Mp4Data, Fourcc, Error as Mp4Error};
+use crate::api::structs::PersonalPlaylistMetaResult;
 
 type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
 const BUF_SIZE: usize = 1024 * 1024;
 
-const REGEX_STRINGS: [&str; 4] = [
+const REGEX_STRINGS: [&str; 5] = [
     r#"^https://app.idagio.com/albums/([a-zA-Z\d-]+)$"#,
     r#"^https://app.idagio.com/live/event/([a-zA-Z\d-]+)$"#,
     r#"^https://app.idagio.com/playlists/([a-zA-Z\d-]+)$"#,
     r#"^https://app.idagio.com/profiles/([a-zA-Z\d-]+)/(?:about|albums)$"#,
+    r#"^https://app.idagio.com/playlists/personal/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"#,
  ];
 
 const SAN_REGEX_STRING: &str = r#"[\/:*?"><|]"#;
@@ -320,7 +322,7 @@ fn write_flac_tags(track_path: &PathBuf, meta: &ParsedAlbumMeta) -> Result<(), F
     set_vorbis(&mut tag, "ALBUMARTIST", &meta.album_artist);
     set_vorbis(&mut tag, "ARTIST", &meta.artist);
     set_vorbis(&mut tag, "COPYRIGHT", &meta.copyright);
-    set_vorbis(&mut tag, "TRACK", &meta.title);
+    set_vorbis(&mut tag, "TITLE", &meta.title);
     set_vorbis(&mut tag, "UPC", &meta.upc);
 
     set_vorbis_num(&mut tag, "TRACKNUMBER", meta.track_num);
@@ -398,6 +400,21 @@ fn parse_plist_meta(meta: &PlaylistMetaResult, track_total: u16) -> ParsedAlbumM
     ParsedAlbumMeta {
         album_title: meta.title.clone(),
         album_artist: meta.curator.name.clone(),
+        artist: String::new(),
+        copyright: String::new(),
+        cover_data: Vec::new(),
+        title: String::new(),
+        track_num: 0,
+        track_total,
+        upc: String::new(),
+        year: 0,
+    }
+}
+
+fn parse_personal_plist_meta(meta: &PersonalPlaylistMetaResult, track_total: u16) -> ParsedAlbumMeta {
+    ParsedAlbumMeta {
+        album_title: meta.title.clone(),
+        album_artist: meta.user_id.clone(),
         artist: String::new(),
         copyright: String::new(),
         cover_data: Vec::new(),
@@ -613,6 +630,35 @@ fn process_plist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<()
     Ok(())
 }
 
+fn process_personal_plist(c: &mut IDAGIOClient, id: &str, config: &Config) -> Result<(), Box<dyn Error>> {
+    let meta = c.get_personal_plists_meta(id)?;
+
+    let track_total = meta.tracks.len() as u16;
+    let mut parsed_meta = parse_personal_plist_meta(&meta, track_total);
+
+    let plist_folder = format!("{} - {} ({})", meta.user_id, meta.title, meta.id);
+    println!("{}", plist_folder);
+
+    let san_plist_folder = sanitise(&plist_folder)?;
+    let plist_path = config.out_path.join(san_plist_folder);
+    fs::create_dir_all(&plist_path)?;
+
+    // The album meta endpoint returns the track IDs as strings, but the plist endpoint returns them as ints instead.
+    let ids: Vec<String> = meta.tracks.iter().map(|t| t.id.to_string()).collect();
+    let stream_meta = c.get_stream_meta(ids, config.format)?;
+
+    for (mut idx, track) in meta.tracks.iter().enumerate() {
+        idx += 1;
+        if let Some(res) = stream_meta.iter().find(|res| res.id == track.id) {
+            parse_track_meta(&mut parsed_meta, track, idx as u16);
+            process_track(c, &plist_path, &parsed_meta, &res.url)?;
+        } else {
+            println!("The API didn't return any stream metadata for this track.")
+        }
+    }
+    Ok(())
+}
+
 fn process_artist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
     let meta = c.get_artist_albums_meta(slug)?;
 
@@ -626,7 +672,6 @@ fn process_artist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(
     }
 
     Ok(())
-
 }
 
 fn compile_regexes() -> Result<Vec<Regex>, regex::Error> {
@@ -667,6 +712,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             1 => process_video(&mut c, &slug, &config),
             2 => process_plist(&mut c, &slug, &config),
             3 => process_artist(&mut c, &slug, &config),
+            4 => process_personal_plist(&mut c, &slug, &config),
             _ => Ok(()),
         };
 
