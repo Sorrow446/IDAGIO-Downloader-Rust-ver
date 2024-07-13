@@ -31,7 +31,7 @@ If you don't have root in Linux, you can have IDAGIO DL look for the binary in t
 |Type|URL example|
 | --- | --- |
 |Album|`https://app.idagio.com/albums/1628a93d-cfdc-4850-bda1-3b14209f729b`
-|Artist albums|`https://app.idagio.com/profiles/claudio-monteverdi/about`, `https://app.idagio.com/profiles/claudio-monteverdi/albums`
+|Artist albums|`https://app.idagio.com/profiles/claudio-monteverdi/about`, `https://app.idagio.com/profiles/claudio-monteverdi/albums`    All filters are also supported. Simply apply them on the IDAGIO site, then pass the link. Wrap in quotes on Windows.
 |Concert|`https://app.idagio.com/live/event/francesco-cavalli-ercole-amante` Best format is automatically chosen for now.
 |Personal playlist|`https://app.idagio.com/playlists/personal/3da14c0c-0a53-4131-946f-1920d3203ad7`
 |Playlist|`https://app.idagio.com/playlists/carolyn-sampson-my-elly-ameling-top-five`
