@@ -241,6 +241,7 @@ pub struct PlaylistMeta {
 
 #[derive(Deserialize)]
 pub struct Cursor {
+    pub prev: Option<String>,
     pub next: Option<String>,
 }
 

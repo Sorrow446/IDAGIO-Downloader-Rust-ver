@@ -107,24 +107,52 @@ impl IDAGIOClient {
 		Ok(artist_meta.id)
 	}
 
-	pub fn get_artist_albums_meta(&mut self, artist_slug: &str) -> Result<Vec<ArtistAlbumsMetaResult>, Box<dyn Error>> {
+	fn filter_artist_params(&mut self, base_url: &str, params: &mut HashMap<String, String>) -> Result<(), Box<dyn Error>> {
+		let url = Url::parse(base_url)?;
+
+		let mut allowed_keys = HashMap::new();
+		allowed_keys.insert("composers", true);
+		allowed_keys.insert("conductors", true);
+		allowed_keys.insert("ensembles", true);
+		allowed_keys.insert("instruments", true);
+		allowed_keys.insert("soloists", true);
+
+		for (k, v) in url.query_pairs() {
+			if allowed_keys.contains_key(&k.as_ref()) {
+				let mut key = k.to_string();
+				key.pop();
+				params.insert(key, v.into_owned());
+			} else {
+				println!("Dropped param: {}.", k);
+			}
+		}
+
+		Ok(())
+	}
+
+	pub fn get_artist_albums_meta(&mut self, artist_slug: &str, params_opt: Option<String>) -> Result<Vec<ArtistAlbumsMetaResult>, Box<dyn Error>> {
 		let artist_id = self.resolve_artist_id(artist_slug)?;
 		let artist_id_string = artist_id.to_string();
-
 		let mut all_meta: Vec<ArtistAlbumsMetaResult> = Vec::new();
-		let url_no_params = format!("{}v2.0/metadata/albums/filter", BASE_URL);
 
 		// Lifetime crap.
 		let mut cursor_opt: Option<String> = None;
 
-		let mut params: HashMap<&str, String> = HashMap::new();
-		params.insert("artist", artist_id_string);
-		params.insert("sort", "relevance".to_string());
+		let mut params: HashMap<String, String> = HashMap::new();
+		let url_no_params = format!("{}v2.0/metadata/albums/filter", BASE_URL);
+
+		if let Some(p) = params_opt {
+			let url_with_params = format!("{}?{}", url_no_params, p.to_lowercase());
+			self.filter_artist_params(&url_with_params, &mut params)?;
+		}
+
+		params.insert("artist".to_string(), artist_id_string.to_string());
+		params.insert("sort".to_string(), "relevance".to_string());
 
 		loop {
 
 			if let Some(cursor) = cursor_opt.as_ref() {
-				params.insert("cursor", cursor.clone());
+				params.insert("cursor".to_string(), cursor.to_string());
 			}
 
 			let url = Url::parse_with_params(&url_no_params, &params)?;
@@ -139,12 +167,14 @@ impl IDAGIOClient {
 			all_meta.extend(meta.results);
 
 			if let Some(c) = meta.meta.cursor.next.clone() {
+				if meta.meta.cursor.prev.is_none() {
+					println!("Artist has more than 100 albums. Fetching the remaining metadata...")
+				}
 				cursor_opt = Some(c);
 			} else {
 				break;
 			}
 
-			println!("Artist has more than 100 albums. Fetching the remaining metadata...")
 		}
 
 		Ok(all_meta)

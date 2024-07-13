@@ -3,7 +3,7 @@ mod structs;
 mod utils;
 
 use api::client::IDAGIOClient;
-use api::structs::{AlbumMetaResult, AudioTrack, Author, PlaylistMetaResult, Track};
+use api::structs::{AlbumMetaResult, AudioTrack, Author, PersonalPlaylistMetaResult, PlaylistMetaResult, Track};
 use structs::{Args, Config, ParsedAlbumMeta};
 
 use std::error::Error;
@@ -26,7 +26,6 @@ use sha2::{Sha256, Digest};
 use id3::{Error as Id3Error, Tag as Mp3Tag, TagLike, Version};
 use id3::frame::{Picture as Mp3Image, PictureType as Mp3ImageType};
 use mp4ameta::{Tag as Mp4Tag, Data as Mp4Data, Fourcc, Error as Mp4Error};
-use crate::api::structs::PersonalPlaylistMetaResult;
 
 type Aes128Ctr128BE = ctr::Ctr128BE<aes::Aes128>;
 
@@ -36,7 +35,7 @@ const REGEX_STRINGS: [&str; 5] = [
     r#"^https://app.idagio.com/albums/([a-zA-Z\d-]+)$"#,
     r#"^https://app.idagio.com/live/event/([a-zA-Z\d-]+)$"#,
     r#"^https://app.idagio.com/playlists/([a-zA-Z\d-]+)$"#,
-    r#"^https://app.idagio.com/profiles/([a-zA-Z\d-]+)/(?:about|albums)$"#,
+    r#"^https://app.idagio.com/profiles/([a-zA-Z\d-]+)/(?:about|albums)(?:\?([^#]*))?$"#,
     r#"^https://app.idagio.com/playlists/personal/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"#,
  ];
 
@@ -112,16 +111,21 @@ fn parse_config() -> Result<Config, Box<dyn Error>> {
     Ok(config)
 }
 
-fn check_url(url: &str, regexes: &[Regex]) -> Result<(String, usize), RegexError> {
+fn check_url(url: &str, regexes: &[Regex]) -> Result<(String, Option<String>, usize), RegexError> {
     for (idx, re) in regexes.iter().enumerate() {
         if let Some(capture) = re.captures(url) {
-            if let Some(matched) = capture.get(1) {
-                return Ok((matched.as_str().to_string(), idx));
+            if let Some(slug_match) = capture.get(1) {
+                let slug = slug_match.as_str().to_string();
+                if let Some(params_match) = capture.get(2) {
+                    let params = params_match.as_str().to_string();
+                    return Ok((slug, Some(params), idx));
+                }
+                return Ok((slug, None, idx));
             }
         }
     }
 
-    Ok((String::new(), 0))
+    Ok((String::new(), None, 0))
 }
 
 fn derive_key(mut key: Vec<u8>) -> Vec<u8> {
@@ -381,6 +385,7 @@ fn process_track(c: &mut IDAGIOClient, album_path: &PathBuf, meta: &ParsedAlbumM
     Ok(())
 }
 
+// Merge these three funcs.
 fn parse_album_meta(meta: &AlbumMetaResult, track_total: u16) -> ParsedAlbumMeta {
     ParsedAlbumMeta {
         album_title: meta.title.clone(),
@@ -427,14 +432,12 @@ fn parse_personal_plist_meta(meta: &PersonalPlaylistMetaResult, track_total: u16
 }
 
 fn parse_track_artists(authors: Vec<Author>) -> String {
-    let mut artists = Vec::new();
-    for author in authors {
-        for person in author.persons {
-            artists.push(person.name);
-        }
-    }
-    artists.join(", ")
+    authors.into_iter()
+        .flat_map(|author| author.persons.into_iter().map(|person| person.name))
+        .collect::<Vec<String>>()
+        .join(", ")
 }
+
 fn parse_track_meta(meta: &mut ParsedAlbumMeta, track_meta: &Track, track_num: u16) {
     let piece_title = &track_meta.piece.title;
 
@@ -644,7 +647,7 @@ fn process_personal_plist(c: &mut IDAGIOClient, id: &str, config: &Config) -> Re
     fs::create_dir_all(&plist_path)?;
 
     // The album meta endpoint returns the track IDs as strings, but the plist endpoint returns them as ints instead.
-    let ids: Vec<String> = meta.tracks.iter().map(|t| t.id.to_string()).collect();
+    let ids: Vec<String> = meta.tracks.iter().map(|t| t.id.clone()).collect();
     let stream_meta = c.get_stream_meta(ids, config.format)?;
 
     for (mut idx, track) in meta.tracks.iter().enumerate() {
@@ -659,8 +662,8 @@ fn process_personal_plist(c: &mut IDAGIOClient, id: &str, config: &Config) -> Re
     Ok(())
 }
 
-fn process_artist(c: &mut IDAGIOClient, slug: &str, config: &Config) -> Result<(), Box<dyn Error>> {
-    let meta = c.get_artist_albums_meta(slug)?;
+fn process_artist(c: &mut IDAGIOClient, slug: &str, params: Option<String>, config: &Config) -> Result<(), Box<dyn Error>> {
+    let meta = c.get_artist_albums_meta(slug, params)?;
 
     let album_total = meta.len();
     for (mut album_num, album_meta) in meta.iter().enumerate() {
@@ -701,7 +704,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for (mut url_num, url) in config.urls.iter().enumerate() {
         url_num += 1;
         println!("URL {} of {}:", url_num, url_total);
-        let (slug, media_type) = check_url(&url, &regexes)?;
+        let (slug, params, media_type) = check_url(&url, &regexes)?;
         if slug.is_empty() {
             println!("Invalid URL: {}", url);
             continue;
@@ -711,7 +714,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             0 => process_album(&mut c, &slug, &config),
             1 => process_video(&mut c, &slug, &config),
             2 => process_plist(&mut c, &slug, &config),
-            3 => process_artist(&mut c, &slug, &config),
+            3 => process_artist(&mut c, &slug, params, &config),
             4 => process_personal_plist(&mut c, &slug, &config),
             _ => Ok(()),
         };

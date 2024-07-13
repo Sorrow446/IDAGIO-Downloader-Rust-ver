@@ -37,19 +37,11 @@ fn read_text_file_lines(filename: &str) -> Result<Vec<String>, IoError> {
     Ok(lines)
 }
 
-fn remove_query_params(url: &str) -> String {
-    if let Some(pos) = url.find('?') {
-        url[..pos].to_string()
-    } else {
-        url.to_string()
-    }
-}
 
 pub fn clean_url(url: &str) -> String {
     let trimmed = url.trim();
     let stripped = trimmed.strip_suffix('/').unwrap_or(&trimmed);
-    let cleaned = remove_query_params(stripped);
-    cleaned
+    stripped.to_string()
 }
 
 pub fn process_urls(urls: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
